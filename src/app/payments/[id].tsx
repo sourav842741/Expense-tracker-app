@@ -87,7 +87,8 @@ export default function PaymentDetailScreen() {
   const progressPct = Math.round((paidCyclesCount / totalCycles) * 100);
 
   const handleConfirmPaid = () => {
-    const cycleToPay = selectedCycleId || displayedCycle.id;
+    const cycleToPay = selectedCycleId || displayedCycle?.id || '';
+    if (!cycleToPay) return;
     markCyclePaid(plan.id, cycleToPay, {
       method: paymentMethod,
       referenceNumber: refNumber || `UPI${Math.floor(100000000000 + Math.random() * 900000000000)}`,
@@ -157,7 +158,9 @@ export default function PaymentDetailScreen() {
           <Button
             title="Mark as Paid"
             onPress={() => {
-              setSelectedCycleId(activeCycle.id);
+              if (activeCycle) {
+                setSelectedCycleId(activeCycle.id);
+              }
               setMarkPaidModalVisible(true);
             }}
             variant="primary"
@@ -191,7 +194,7 @@ export default function PaymentDetailScreen() {
             </Text>
           </View>
 
-          {isPaid && activeCycle.paidAt && (
+          {isPaid && activeCycle?.paidAt && (
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
                 Paid date
@@ -207,17 +210,17 @@ export default function PaymentDetailScreen() {
               Payment method
             </Text>
             <Text style={[styles.detailVal, { color: colors.textPrimary }]}>
-              {activeCycle.paymentMethod || plan.paymentMethod}
+              {activeCycle?.paymentMethod || plan.paymentMethod}
             </Text>
           </View>
 
-          {activeCycle.referenceNumber && (
+          {activeCycle?.referenceNumber && (
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
                 Reference No.
               </Text>
               <Text style={[styles.detailVal, { color: colors.textPrimary, fontFamily: 'monospace' }]}>
-                {activeCycle.referenceNumber}
+                {activeCycle?.referenceNumber}
               </Text>
             </View>
           )}
@@ -248,7 +251,7 @@ export default function PaymentDetailScreen() {
           <View style={styles.cyclesGrid}>
             {plan.cycles.map((cycle) => {
               const cyclePaid = cycle.status === 'paid';
-              const isSelected = cycle.id === displayedCycle.id;
+              const isSelected = cycle.id === displayedCycle?.id;
               return (
                 <TouchableOpacity
                   key={cycle.id}
@@ -301,15 +304,15 @@ export default function PaymentDetailScreen() {
                 UPI Payment Receipt Proof
               </Text>
               <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                Cycle #{displayedCycle.cycleNumber} · {formatDateShort(displayedCycle.dueDate)}
+                Cycle #{displayedCycle?.cycleNumber || 1} · {formatDateShort(displayedCycle?.dueDate || dueDateStr)}
               </Text>
             </View>
-            {displayedCycle.proofUrl ? (
+            {displayedCycle?.proofUrl ? (
               <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
                 <TouchableOpacity onPress={() => setReceiptModalVisible(true)}>
                   <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>Change</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setFullscreenImage(displayedCycle.proofUrl || null)}>
+                <TouchableOpacity onPress={() => setFullscreenImage(displayedCycle?.proofUrl || null)}>
                   <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>View Full</Text>
                 </TouchableOpacity>
               </View>
@@ -320,13 +323,13 @@ export default function PaymentDetailScreen() {
             )}
           </View>
 
-          {displayedCycle.proofUrl ? (
+          {displayedCycle?.proofUrl ? (
             <TouchableOpacity
               activeOpacity={0.9}
-              onPress={() => setFullscreenImage(displayedCycle.proofUrl || null)}
+              onPress={() => setFullscreenImage(displayedCycle?.proofUrl || null)}
               style={[styles.proofImageWrapper, { borderColor: colors.border }]}
             >
-              <Image source={{ uri: displayedCycle.proofUrl }} style={styles.proofImageThumb} resizeMode="cover" />
+              <Image source={{ uri: displayedCycle?.proofUrl || '' }} style={styles.proofImageThumb} resizeMode="cover" />
               <View style={styles.maximizeBadge}>
                 <Maximize2 size={14} color="#FFF" />
                 <Text style={styles.maximizeText}>Tap to Zoom Receipt</Text>
@@ -344,8 +347,8 @@ export default function PaymentDetailScreen() {
                   {isPaid ? 'UPI Transfer Completed' : 'No receipt attached for this cycle'}
                 </Text>
                 <Text style={[styles.proofSub, { color: colors.textSecondary }]}>
-                  {isPaid && displayedCycle.referenceNumber
-                    ? 'Ref: ' + displayedCycle.referenceNumber + ' (Tap to attach receipt screenshot)'
+                  {isPaid && displayedCycle?.referenceNumber
+                    ? 'Ref: ' + displayedCycle?.referenceNumber + ' (Tap to attach receipt screenshot)'
                     : 'Tap here to upload UPI confirmation screenshot'}
                 </Text>
               </View>

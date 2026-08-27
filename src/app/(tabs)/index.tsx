@@ -5,10 +5,10 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Platform,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Search,
@@ -438,8 +438,8 @@ export default function HomeScreen() {
                 style={[
                   styles.homeNotifCard,
                   {
-                    borderColor: n.read ? colors.border : colors.accent + '50',
-                    backgroundColor: n.read ? colors.card : colors.accent + '08',
+                    borderColor: n.read ? colors.border : colors.info,
+                    backgroundColor: n.read ? colors.card : colors.infoBg,
                   },
                 ]}
                 onPress={() => router.push('/notifications')}
@@ -448,7 +448,7 @@ export default function HomeScreen() {
                   <View
                     style={[
                       styles.miniNotifDot,
-                      { backgroundColor: n.read ? colors.textMuted : colors.accent },
+                      { backgroundColor: n.read ? colors.textMuted : colors.info },
                     ]}
                   />
                   <View style={{ flex: 1, marginLeft: 10 }}>
