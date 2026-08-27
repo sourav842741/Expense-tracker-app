@@ -39,21 +39,46 @@ export default function AnalyticsScreen() {
     { label: 'Year', value: 'year' },
   ];
 
-  // Payment trend data points
+  const currentMonthIdx = new Date().getMonth();
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  // Dynamic Payment Trend (Weekly for current month)
   const paymentTrendData = [
-    { label: 'W1', value: 3000 },
-    { label: 'W2', value: 8000 },
-    { label: 'W3', value: 10000 },
-    { label: 'W4', value: 13000 },
+    { label: 'W1', value: 0 },
+    { label: 'W2', value: 0 },
+    { label: 'W3', value: 0 },
+    { label: 'W4', value: 0 },
   ];
+  paymentPlans.forEach(p => {
+    if (p.dueDay <= 7) paymentTrendData[0].value += p.amount;
+    else if (p.dueDay <= 14) paymentTrendData[1].value += p.amount;
+    else if (p.dueDay <= 21) paymentTrendData[2].value += p.amount;
+    else paymentTrendData[3].value += p.amount;
+  });
 
-  // Savings trend data points
-  const savingsTrendData = [
-    { label: 'May', value: 4000 },
-    { label: 'Jun', value: 6000 },
-    { label: 'Jul', value: 8000 },
-    { label: 'Aug', value: 10000 },
-  ];
+  const savingsTrendData: Array<{label: string, monthIndex: number, value: number}> = [];
+  for (let i = 3; i >= 0; i--) {
+    let m = currentMonthIdx - i;
+    if (m < 0) m += 12;
+    savingsTrendData.push({ label: monthNames[m], monthIndex: m, value: 0 });
+  }
+  
+  goals.forEach(g => {
+    g.transactions.forEach(tx => {
+      const d = new Date(tx.date);
+      const m = d.getMonth();
+      const target = savingsTrendData.find(item => item.monthIndex === m);
+      if (target) {
+        target.value += tx.amount;
+      }
+    });
+  });
+  
+  let cumulative = 0;
+  savingsTrendData.forEach(item => {
+    cumulative += item.value;
+    item.value = cumulative;
+  });
 
   // Calculate totals
   const totalPayments = paymentPlans.reduce((sum, p) => sum + p.amount, 0);
@@ -67,18 +92,32 @@ export default function AnalyticsScreen() {
       ? Math.round((user.savingsTarget / user.monthlyIncome) * 100)
       : 20;
 
-  // Category commitments
+  // Dynamic Category Commitments
+  const circlesStore = useAppStore((state) => state.circles);
+  const emiAmount = paymentPlans.filter(p => p.category.toLowerCase() === 'emi').reduce((sum, p) => sum + p.amount, 0);
+  const housingAmount = paymentPlans.filter(p => p.category.toLowerCase() === 'housing').reduce((sum, p) => sum + p.amount, 0);
+  const insuranceAmount = paymentPlans.filter(p => p.category.toLowerCase() === 'insurance').reduce((sum, p) => sum + p.amount, 0);
+  const subAmount = paymentPlans.filter(p => ['subscription', 'utility'].includes(p.category.toLowerCase())).reduce((sum, p) => sum + p.amount, 0);
+  const circleAmount = circlesStore.reduce((sum, c) => {
+     const myMember = c.members.find(m => m.name === user.name) || c.members[0];
+     return sum + (myMember ? myMember.expectedAmount : 0);
+  }, 0);
+
+  const totalMonthlyCommitment = emiAmount + housingAmount + insuranceAmount + subAmount + circleAmount;
+
   const categoryItems = [
-    { icon: '💳', name: 'EMI Plans', amount: 5000, percentage: 24, color: '#171717' },
-    { icon: '🏠', name: 'Housing & Rent', amount: 10000, percentage: 48, color: '#5D7EDB' },
-    { icon: '🛡️', name: 'Insurance', amount: 2000, percentage: 10, color: '#2F9E63' },
-    { icon: '📱', name: 'Subscriptions', amount: 799, percentage: 4, color: '#D9912B' },
-    { icon: '👥', name: 'Group Circles', amount: 3000, percentage: 14, color: '#8E54E9' },
+    { icon: '💳', name: 'EMI Plans', amount: emiAmount, percentage: totalMonthlyCommitment ? Math.round((emiAmount/totalMonthlyCommitment)*100) : 0, color: '#171717' },
+    { icon: '🏠', name: 'Housing & Rent', amount: housingAmount, percentage: totalMonthlyCommitment ? Math.round((housingAmount/totalMonthlyCommitment)*100) : 0, color: '#5D7EDB' },
+    { icon: '🛡️', name: 'Insurance', amount: insuranceAmount, percentage: totalMonthlyCommitment ? Math.round((insuranceAmount/totalMonthlyCommitment)*100) : 0, color: '#2F9E63' },
+    { icon: '📱', name: 'Subscriptions', amount: subAmount, percentage: totalMonthlyCommitment ? Math.round((subAmount/totalMonthlyCommitment)*100) : 0, color: '#D9912B' },
+    { icon: '👥', name: 'Group Circles', amount: circleAmount, percentage: totalMonthlyCommitment ? Math.round((circleAmount/totalMonthlyCommitment)*100) : 0, color: '#8E54E9' },
   ];
+
+  const hasChartData = totalPayments > 0 || totalSaved > 0;
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={[styles.navBar, { paddingHorizontal: spacing.standard, paddingTop: topInset + 6 }]}>
+      <View style={[styles.navBar, { paddingHorizontal: spacing.standard, paddingTop: 4 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
           style={[styles.navBtn, { backgroundColor: colors.surfaceSecondary }]}
@@ -139,38 +178,48 @@ export default function AnalyticsScreen() {
           </Card>
         </View>
 
-        {/* Payment Trend Chart */}
-        <Card style={styles.chartCard}>
-          <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
-            Payment Trend
-          </Text>
-          <Text style={[styles.chartSub, { color: colors.textSecondary }]}>
-            Scheduled commitments across the month
-          </Text>
-          <TrendLineChart data={paymentTrendData} height={150} color={colors.accent} />
-        </Card>
+        {/* Charts & Breakdown */}
+        {!hasChartData ? (
+          <View style={{ marginTop: 40, alignItems: 'center' }}>
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '700' }}>No financial data yet</Text>
+            <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Add payments and savings to see your insights.</Text>
+          </View>
+        ) : (
+          <>
+            {/* Payment Trend Chart */}
+            <Card style={styles.chartCard}>
+              <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
+                Payment Trend
+              </Text>
+              <Text style={[styles.chartSub, { color: colors.textSecondary }]}>
+                Scheduled commitments across the month
+              </Text>
+              <TrendLineChart data={paymentTrendData} height={150} color={colors.accent} />
+            </Card>
 
-        {/* Savings Trend Chart */}
-        <Card style={styles.chartCard}>
-          <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
-            Savings Growth
-          </Text>
-          <Text style={[styles.chartSub, { color: colors.textSecondary }]}>
-            Consistent deposits over the last 4 months
-          </Text>
-          <TrendLineChart data={savingsTrendData} height={150} color={colors.success} />
-        </Card>
+            {/* Savings Trend Chart */}
+            <Card style={styles.chartCard}>
+              <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
+                Savings Growth
+              </Text>
+              <Text style={[styles.chartSub, { color: colors.textSecondary }]}>
+                Consistent deposits over the last 4 months
+              </Text>
+              <TrendLineChart data={savingsTrendData} height={150} color={colors.success} />
+            </Card>
 
-        {/* Category Breakdown */}
-        <Card style={styles.chartCard}>
-          <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
-            Monthly Commitments Breakdown
-          </Text>
-          <Text style={[styles.chartSub, { color: colors.textSecondary }]}>
-            Distribution across loan, rent, bills, and pools
-          </Text>
-          <CategoryBarChart categories={categoryItems} />
-        </Card>
+            {/* Category Breakdown */}
+            <Card style={styles.chartCard}>
+              <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>
+                Monthly Commitments Breakdown
+              </Text>
+              <Text style={[styles.chartSub, { color: colors.textSecondary }]}>
+                Distribution across loan, rent, bills, and pools
+              </Text>
+              <CategoryBarChart categories={categoryItems} />
+            </Card>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

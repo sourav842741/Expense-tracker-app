@@ -135,7 +135,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { padding: spacing.standard }]}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing.standard, paddingBottom: spacing.standard, paddingTop: 8 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -489,7 +489,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
-    paddingTop: Platform.OS === 'android' ? 12 : 0,
+    paddingTop: 4,
   },
   dateBadge: {
     flexDirection: 'row',

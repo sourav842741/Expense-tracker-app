@@ -227,7 +227,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { padding: spacing.standard }]}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing.standard, paddingBottom: spacing.standard, paddingTop: 8 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Card Header */}

@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
-    paddingTop: Platform.OS === 'android' ? 14 : 6,
+    paddingTop: 4,
   },
   title: {
     fontSize: 24,
