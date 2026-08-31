@@ -18,6 +18,7 @@ export interface SavingsTransaction {
 
 export interface SavingsGoal {
   id: string;
+  userId?: string;
   title: string;
   targetAmount: number;
   currentAmount: number;

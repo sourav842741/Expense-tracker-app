@@ -1,43 +1,46 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { Home, CreditCard, Users, Target, User } from 'lucide-react-native';
-import { View, ActivityIndicator } from 'react-native';
 import { useTheme } from '@/hooks/use-theme';
 import { useAppStore } from '@/store/useAppStore';
 import { supabaseService } from '@/services/supabaseService';
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  const user = useAppStore(state => state.user);
-  const setUserPlansAndCircles = useAppStore(state => state.setUserPlansAndCircles);
-  const [isSyncing, setIsSyncing] = useState(true);
+  const user = useAppStore((state) => state.user);
+  const setUserPlansAndCircles = useAppStore((state) => state.setUserPlansAndCircles);
 
   useEffect(() => {
-    async function syncData() {
-      if (user?.id) {
-        try {
-          const [plans, circles, goals] = await Promise.all([
-            supabaseService.getUserPaymentPlans(user.id),
-            supabaseService.getUserCircles(user.id),
-            supabaseService.getUserGoals(user.id),
-          ]);
-          setUserPlansAndCircles(plans, circles, goals);
-        } catch (e) {
-          console.warn('Failed to sync data from supabase:', e);
-        }
-      }
-      setIsSyncing(false);
-    }
-    syncData();
-  }, [user?.id]);
+    let isMounted = true;
 
-  if (isSyncing) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={colors.accent} />
-      </View>
-    );
-  }
+    async function syncData() {
+      if (!user?.id) return;
+      try {
+        const [remotePlans, remoteCircles, remoteGoals] = await Promise.all([
+          supabaseService.getUserPaymentPlans(user.id),
+          supabaseService.getUserCircles(user.id),
+          supabaseService.getUserGoals(user.id),
+        ]);
+
+        if (!isMounted) return;
+
+        // Set strictly what belongs to this specific user from the database
+        setUserPlansAndCircles(
+          remotePlans || [],
+          remoteCircles || [],
+          remoteGoals || []
+        );
+      } catch (e) {
+        console.warn('Failed to sync user data from supabase:', e);
+      }
+    }
+
+    syncData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
 
   return (
     <Tabs

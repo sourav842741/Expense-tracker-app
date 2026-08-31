@@ -22,6 +22,7 @@ export interface CircleMember {
 
 export interface MoneyCircle {
   id: string;
+  userId?: string;
   name: string;
   description?: string;
   targetAmount: number;

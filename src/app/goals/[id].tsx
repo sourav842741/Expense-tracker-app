@@ -5,10 +5,11 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Platform,
   Modal,
+  Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
@@ -18,6 +19,8 @@ import {
   Plus,
   X,
   TrendingUp,
+  Pencil,
+  Trash2,
 } from 'lucide-react-native';
 
 import { useTheme } from '@/hooks/use-theme';
@@ -28,6 +31,7 @@ import { Input } from '@/components/ui/Input';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { formatINR } from '@/utils/currency';
 import { formatDateFull, formatDateShort } from '@/utils/dates';
+import { GoalCategory } from '@/types/goal';
 
 export default function GoalDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,12 +40,22 @@ export default function GoalDetailScreen() {
 
   const goals = useAppStore((state) => state.goals);
   const depositToGoal = useAppStore((state) => state.depositToGoal);
+  const updateSavingsGoal = useAppStore((state) => state.updateSavingsGoal);
+  const deleteSavingsGoal = useAppStore((state) => state.deleteSavingsGoal);
 
   const goal = goals.find((g) => g.id === id) || goals[0];
 
+  // Deposit State
   const [depositModalVisible, setDepositModalVisible] = useState(false);
   const [amountInput, setAmountInput] = useState('');
   const [noteInput, setNoteInput] = useState('');
+
+  // Edit Goal State
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editTitle, setEditTitle] = useState(goal ? goal.title : '');
+  const [editTarget, setEditTarget] = useState(goal ? String(goal.targetAmount) : '');
+  const [editMonthly, setEditMonthly] = useState(goal ? String(goal.monthlyContribution) : '');
+  const [editTargetDate, setEditTargetDate] = useState(goal ? goal.targetDate : '');
 
   if (!goal) {
     return (
@@ -64,8 +78,48 @@ export default function GoalDetailScreen() {
     }
   };
 
+  const handleSaveEdit = () => {
+    if (!editTitle.trim()) {
+      Alert.alert('Validation Error', 'Please enter a goal title.');
+      return;
+    }
+    const target = parseFloat(editTarget);
+    if (isNaN(target) || target <= 0) {
+      Alert.alert('Validation Error', 'Please enter a valid target amount.');
+      return;
+    }
+    const monthly = parseFloat(editMonthly) || 0;
+
+    updateSavingsGoal(goal.id, {
+      title: editTitle.trim(),
+      targetAmount: target,
+      monthlyContribution: monthly,
+      targetDate: editTargetDate.trim() || goal.targetDate,
+    });
+    setEditModalVisible(false);
+  };
+
+  const handleDeleteGoal = () => {
+    Alert.alert(
+      'Delete Savings Goal',
+      `Are you sure you want to delete "${goal.title}"? All savings history for this goal will be removed.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteSavingsGoal(goal.id);
+            router.back();
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      {/* Nav Bar */}
       <View style={[styles.navBar, { paddingHorizontal: spacing.standard }]}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -74,7 +128,28 @@ export default function GoalDetailScreen() {
           <ArrowLeft size={18} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.navTitle, { color: colors.textPrimary }]}>Goal Details</Text>
-        <View style={{ width: 38 }} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              setEditTitle(goal.title);
+              setEditTarget(String(goal.targetAmount));
+              setEditMonthly(String(goal.monthlyContribution));
+              setEditTargetDate(goal.targetDate);
+              setEditModalVisible(true);
+            }}
+            style={[styles.navBtn, { backgroundColor: colors.surfaceSecondary }]}
+            accessibilityLabel="Edit Goal"
+          >
+            <Pencil size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleDeleteGoal}
+            style={[styles.navBtn, { backgroundColor: colors.danger + '15' }]}
+            accessibilityLabel="Delete Goal"
+          >
+            <Trash2 size={16} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -220,7 +295,6 @@ export default function GoalDetailScreen() {
               label="Amount (₹)"
               placeholder="e.g. 5000"
               keyboardType="numeric"
-              prefix="₹"
               value={amountInput}
               onChangeText={setAmountInput}
             />
@@ -238,6 +312,78 @@ export default function GoalDetailScreen() {
               variant="primary"
               size="md"
               style={{ marginTop: 8 }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Goal Modal */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalBox,
+              {
+                backgroundColor: colors.card,
+                borderRadius: radius.card,
+                borderColor: colors.border,
+                borderWidth: 1,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                Edit Savings Goal
+              </Text>
+              <TouchableOpacity
+                onPress={() => setEditModalVisible(false)}
+                style={[styles.closeBtn, { backgroundColor: colors.surfaceSecondary }]}
+              >
+                <X size={16} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <Input
+              label="Goal Title"
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="e.g. Goa Vacation"
+            />
+
+            <Input
+              label="Target Amount (₹)"
+              value={editTarget}
+              onChangeText={setEditTarget}
+              keyboardType="numeric"
+              placeholder="e.g. 50000"
+            />
+
+            <Input
+              label="Monthly Target (₹)"
+              value={editMonthly}
+              onChangeText={setEditMonthly}
+              keyboardType="numeric"
+              placeholder="e.g. 5000"
+            />
+
+            <Input
+              label="Target Date (YYYY-MM-DD)"
+              value={editTargetDate}
+              onChangeText={setEditTargetDate}
+              placeholder="YYYY-MM-DD"
+            />
+
+            <Button
+              title="Save Changes"
+              onPress={handleSaveEdit}
+              variant="primary"
+              size="md"
+              style={{ marginTop: 12 }}
             />
           </View>
         </View>

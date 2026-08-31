@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -12,6 +11,7 @@ import {
   Animated,
   Vibration,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff, Sparkles, KeyRound, Delete } from 'lucide-react-native';
 
@@ -19,7 +19,6 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAppStore } from '@/store/useAppStore';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { supabase } from '@/lib/supabase';
 import { supabaseService } from '@/services/supabaseService';
 
 export default function LoginScreen() {
@@ -66,7 +65,7 @@ export default function LoginScreen() {
       setEnteredPin(nextPin);
       setPinError('');
 
-      // When 4 digits are completed, automatically authenticate against database!
+      // When 4 digits are completed, authenticate strictly for that user
       if (nextPin.length === 4) {
         setLoading(true);
         try {
@@ -74,18 +73,24 @@ export default function LoginScreen() {
           const dbResult = await supabaseService.loginWithPin(nextPin);
           if (dbResult.success && dbResult.profile) {
             const prof = dbResult.profile;
-            // Load user-specific commitments from cloud
+            // Load strictly this user's data from cloud
             const [plans, circles, goals] = await Promise.all([
               supabaseService.getUserPaymentPlans(prof.id),
               supabaseService.getUserCircles(prof.id),
               supabaseService.getUserGoals(prof.id),
             ]);
 
-            // Only override if cloud actually has plans; otherwise store restores from userVault
-            if (plans.length > 0 || circles.length > 0 || goals.length > 0) {
-              setUserPlansAndCircles(plans, circles, goals);
-            }
-            login(prof.email, prof.name, prof.id, prof.pin_code, prof.monthly_income, prof.available_balance);
+            login(
+              prof.email,
+              prof.name,
+              prof.id,
+              prof.pin_code,
+              prof.monthly_income,
+              prof.available_balance,
+              prof.avatar_url
+            );
+            setUserPlansAndCircles(plans || [], circles || [], goals || []);
+
             router.replace('/(tabs)');
             return;
           }
@@ -100,13 +105,21 @@ export default function LoginScreen() {
               matchingVault.user.email,
               matchingVault.user.name,
               matchingVault.user.id,
-              matchingVault.pinCode || undefined
+              matchingVault.pinCode || undefined,
+              matchingVault.user.monthlyIncome,
+              matchingVault.user.availableBalance,
+              matchingVault.user.avatarUrl
+            );
+            setUserPlansAndCircles(
+              matchingVault.paymentPlans || [],
+              matchingVault.circles || [],
+              matchingVault.goals || []
             );
             router.replace('/(tabs)');
             return;
           }
 
-          // 3. Check current device PIN or default 1234
+          // 3. Fallback PIN check
           if (nextPin === (pinCode || '1234')) {
             login(user.email, user.name, user.id, pinCode || '1234');
             router.replace('/(tabs)');
@@ -149,7 +162,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // 1. Direct database validation against Supabase profiles!
+      // 1. Direct database validation against Supabase profiles
       const dbResult = await supabaseService.validateAndLogin(email.trim(), password);
 
       if (!dbResult.success) {
@@ -164,19 +177,25 @@ export default function LoginScreen() {
 
       const prof = dbResult.profile;
 
-      // 2. Fetch THAT specific user's plans, circles, goals (Data Isolation)
+      // 2. Fetch THAT specific user's plans, circles, goals (Strict Data Isolation)
       const [plans, circles, goals] = await Promise.all([
         supabaseService.getUserPaymentPlans(prof.id),
         supabaseService.getUserCircles(prof.id),
         supabaseService.getUserGoals(prof.id),
       ]);
 
-      if (plans.length > 0 || circles.length > 0 || goals.length > 0) {
-        setUserPlansAndCircles(plans, circles, goals);
-      }
+      // 3. Set authenticated user and their isolated data
+      login(
+        prof.email,
+        prof.name,
+        prof.id,
+        prof.pin_code,
+        prof.monthly_income,
+        prof.available_balance,
+        prof.avatar_url
+      );
+      setUserPlansAndCircles(plans || [], circles || [], goals || []);
 
-      // 3. Set authenticated user in store (restores from vault if cloud is empty)
-      login(prof.email, prof.name, prof.id, prof.pin_code, prof.monthly_income, prof.available_balance);
       router.replace('/(tabs)');
     } catch (err: any) {
       if (Platform.OS === 'web') {
@@ -198,205 +217,175 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Brand Header */}
+          {/* Header */}
           <View style={styles.header}>
-            <View style={[styles.logoIcon, { backgroundColor: colors.accent }]}>
-              <Sparkles size={28} color={colors.accentInverted} />
+            <View style={[styles.logoBadge, { backgroundColor: colors.surfaceSecondary }]}>
+              <Sparkles size={28} color={colors.accent} />
             </View>
-            <Text style={[styles.appName, { color: colors.textPrimary }]}>MoneyCircle</Text>
-            <Text style={[styles.tagline, { color: colors.textSecondary }]}>
-              Smart Financial Commitments & Shared Circles
+            <Text style={[styles.title, { color: colors.textPrimary }]}>MoneyCircle</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              Your intelligent financial commitments & savings tracker
             </Text>
           </View>
 
-          {/* Form Card */}
-          <View
-            style={[
-              styles.formCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.formTitle, { color: colors.textPrimary }]}>Welcome Back</Text>
-            <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
-              Sign in to manage your commitments & savings
-            </Text>
-
-            {/* Mode Switcher Tabs: PIN vs Email */}
-            <View style={[styles.tabContainer, { backgroundColor: colors.surfaceSecondary }]}>
-              <TouchableOpacity
+          {/* Mode Switcher */}
+          <View style={[styles.switcherContainer, { backgroundColor: colors.surfaceSecondary }]}>
+            <TouchableOpacity
+              style={[
+                styles.switchBtn,
+                loginMode === 'pin' && [styles.switchBtnActive, { backgroundColor: colors.card }],
+              ]}
+              onPress={() => {
+                setLoginMode('pin');
+                setEnteredPin('');
+                setPinError('');
+              }}
+            >
+              <KeyRound size={16} color={loginMode === 'pin' ? colors.textPrimary : colors.textMuted} />
+              <Text
                 style={[
-                  styles.tabButton,
-                  loginMode === 'pin' && { backgroundColor: colors.card, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
+                  styles.switchText,
+                  { color: loginMode === 'pin' ? colors.textPrimary : colors.textMuted },
                 ]}
-                onPress={() => {
-                  setLoginMode('pin');
-                  setEnteredPin('');
-                  setPinError('');
-                }}
               >
-                <KeyRound size={16} color={loginMode === 'pin' ? colors.accent : colors.textSecondary} style={{ marginRight: 6 }} />
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: loginMode === 'pin' ? colors.textPrimary : colors.textSecondary, fontWeight: loginMode === 'pin' ? '700' : '500' },
-                  ]}
-                >
-                  4-Digit PIN
-                </Text>
-              </TouchableOpacity>
+                4-Digit PIN
+              </Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
+            <TouchableOpacity
+              style={[
+                styles.switchBtn,
+                loginMode === 'email' && [styles.switchBtnActive, { backgroundColor: colors.card }],
+              ]}
+              onPress={() => setLoginMode('email')}
+            >
+              <Mail size={16} color={loginMode === 'email' ? colors.textPrimary : colors.textMuted} />
+              <Text
                 style={[
-                  styles.tabButton,
-                  loginMode === 'email' && { backgroundColor: colors.card, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
+                  styles.switchText,
+                  { color: loginMode === 'email' ? colors.textPrimary : colors.textMuted },
                 ]}
-                onPress={() => setLoginMode('email')}
               >
-                <Mail size={16} color={loginMode === 'email' ? colors.accent : colors.textSecondary} style={{ marginRight: 6 }} />
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: loginMode === 'email' ? colors.textPrimary : colors.textSecondary, fontWeight: loginMode === 'email' ? '700' : '500' },
-                  ]}
-                >
-                  Email & Pass
-                </Text>
-              </TouchableOpacity>
-            </View>
+                Email & Password
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-            {loginMode === 'pin' ? (
-              /* 4-Digit Quick PIN Keypad Section */
-              <View style={styles.pinSection}>
-                <Text style={[styles.pinInstruction, { color: colors.textSecondary }]}>
-                  {pinCode ? 'Enter your 4-digit PIN to sign in automatically' : 'Enter 4-digit PIN (Default: 1234)'}
-                </Text>
+          {/* PIN Pad Form */}
+          {loginMode === 'pin' ? (
+            <Animated.View style={[styles.pinSection, { transform: [{ translateX: shakeAnim }] }]}>
+              <Text style={[styles.pinInstruction, { color: colors.textSecondary }]}>
+                Enter your 4-digit security PIN to access your vault
+              </Text>
 
-                {/* Dots display with shake */}
-                <Animated.View style={[styles.dotsRow, { transform: [{ translateX: shakeAnim }] }]}>
-                  {[0, 1, 2, 3].map((idx) => {
-                    const filled = enteredPin.length > idx;
-                    return (
-                      <View
-                        key={idx}
-                        style={[
-                          styles.dot,
-                          {
-                            borderColor: pinError ? colors.danger : filled ? colors.accent : colors.border,
-                            backgroundColor: filled ? (pinError ? colors.danger : colors.accent) : 'transparent',
-                          },
-                        ]}
-                      />
-                    );
-                  })}
-                </Animated.View>
-
-                {pinError ? (
-                  <Text style={[styles.errorText, { color: colors.danger }]}>{pinError}</Text>
-                ) : null}
-
-                {/* Keypad Grid */}
-                <View style={styles.keypadGrid}>
-                  {[
-                    ['1', '2', '3'],
-                    ['4', '5', '6'],
-                    ['7', '8', '9'],
-                    ['', '0', 'del'],
-                  ].map((row, rowIdx) => (
-                    <View key={rowIdx} style={styles.keypadRow}>
-                      {row.map((btn, btnIdx) => {
-                        if (btn === '') {
-                          return <View key={btnIdx} style={styles.keypadKeyEmpty} />;
-                        }
-                        if (btn === 'del') {
-                          return (
-                            <TouchableOpacity
-                              key={btnIdx}
-                              onPress={handlePinDelete}
-                              style={[styles.keypadKey, { backgroundColor: colors.surfaceSecondary }]}
-                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            >
-                              <Delete size={20} color={colors.textPrimary} />
-                            </TouchableOpacity>
-                          );
-                        }
-                        return (
-                          <TouchableOpacity
-                            key={btnIdx}
-                            onPress={() => handlePinPress(btn)}
-                            style={[styles.keypadKey, { backgroundColor: colors.surfaceSecondary }]}
-                            activeOpacity={0.6}
-                          >
-                            <Text style={[styles.keyNumber, { color: colors.textPrimary }]}>{btn}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  ))}
-                </View>
+              {/* PIN Dots */}
+              <View style={styles.pinDotsRow}>
+                {[0, 1, 2, 3].map((idx) => {
+                  const filled = idx < enteredPin.length;
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.pinDot,
+                        {
+                          borderColor: pinError ? colors.danger : colors.border,
+                          backgroundColor: filled
+                            ? pinError
+                              ? colors.danger
+                              : colors.accent
+                            : colors.surfaceSecondary,
+                        },
+                      ]}
+                    />
+                  );
+                })}
               </View>
-            ) : (
-              /* Email & Password Form Section */
-              <View>
-                <Input
-                  label="EMAIL ADDRESS"
-                  placeholder="name@example.com"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  icon={<Mail size={18} color={colors.textSecondary} />}
-                />
 
+              {pinError ? (
+                <Text style={[styles.pinErrorText, { color: colors.danger }]}>{pinError}</Text>
+              ) : null}
+
+              {/* Number Pad Grid */}
+              <View style={styles.keypad}>
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((key, i) => {
+                  if (key === '') {
+                    return <View key={i} style={styles.keyEmpty} />;
+                  }
+                  if (key === 'del') {
+                    return (
+                      <TouchableOpacity
+                        key={i}
+                        style={[styles.keyBtn, { backgroundColor: colors.surfaceSecondary }]}
+                        onPress={handlePinDelete}
+                        accessibilityLabel="Delete digit"
+                      >
+                        <Delete size={22} color={colors.textPrimary} />
+                      </TouchableOpacity>
+                    );
+                  }
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={[styles.keyBtn, { backgroundColor: colors.surfaceSecondary }]}
+                      onPress={() => handlePinPress(key)}
+                      accessibilityLabel={`Digit ${key}`}
+                    >
+                      <Text style={[styles.keyText, { color: colors.textPrimary }]}>{key}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </Animated.View>
+          ) : (
+            /* Email & Password Form */
+            <View style={styles.form}>
+              <Input
+                label="Email Address"
+                placeholder="name@example.com"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <View style={{ position: 'relative' }}>
                 <Input
-                  label="PASSWORD"
-                  placeholder="••••••••"
+                  label="Password"
+                  placeholder="Enter your password"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  icon={<Lock size={18} color={colors.textSecondary} />}
-                  rightElement={
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      {showPassword ? (
-                        <EyeOff size={18} color={colors.textSecondary} />
-                      ) : (
-                        <Eye size={18} color={colors.textSecondary} />
-                      )}
-                    </TouchableOpacity>
-                  }
                 />
-
-                <Button
-                  title={loading ? 'Signing In...' : 'Sign In with Email'}
-                  variant="primary"
-                  onPress={handleLogin}
-                  loading={loading}
-                  style={{ marginTop: 10, marginBottom: 12 }}
-                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                  accessibilityLabel="Toggle password visibility"
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} color={colors.textSecondary} />
+                  ) : (
+                    <Eye size={18} color={colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
               </View>
-            )}
 
-            <View style={[styles.dividerRow, { marginVertical: 14 }]}>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <Button
+                title={loading ? 'Signing In...' : 'Sign In'}
+                onPress={handleLogin}
+                variant="primary"
+                size="lg"
+                loading={loading}
+                style={{ marginTop: 8 }}
+              />
             </View>
+          )}
 
-            <Button
-              title="Explore as Demo User"
-              variant="secondary"
-              onPress={handleDemoLogin}
-            />
-          </View>
-
-          {/* Footer Signup Link */}
-          <View style={styles.footerRow}>
+          {/* Footer Navigation */}
+          <View style={styles.footer}>
             <Text style={[styles.footerText, { color: colors.textSecondary }]}>
               Don't have an account?{' '}
             </Text>
@@ -404,6 +393,16 @@ export default function LoginScreen() {
               <Text style={[styles.signupLink, { color: colors.accent }]}>Sign Up</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Quick Demo Login Option */}
+          <TouchableOpacity
+            style={[styles.demoBtn, { borderColor: colors.border }]}
+            onPress={handleDemoLogin}
+          >
+            <Text style={[styles.demoText, { color: colors.textSecondary }]}>
+              Explore as Guest / Demo Mode
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -423,7 +422,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  logoIcon: {
+  logoBadge: {
     width: 60,
     height: 60,
     borderRadius: 30,
@@ -431,125 +430,122 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  appName: {
+  title: {
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
   },
-  tagline: {
+  subtitle: {
     fontSize: 13,
-    marginTop: 4,
     textAlign: 'center',
+    marginTop: 4,
+    maxWidth: 280,
+    lineHeight: 18,
   },
-  formCard: {
-    padding: 22,
-    borderRadius: 20,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  formSubtitle: {
-    fontSize: 13,
-    marginBottom: 18,
-  },
-  tabContainer: {
+  switcherContainer: {
     flexDirection: 'row',
     padding: 4,
-    borderRadius: 12,
-    marginBottom: 18,
+    borderRadius: 14,
+    marginBottom: 24,
   },
-  tabButton: {
+  switchBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     paddingVertical: 10,
     borderRadius: 10,
   },
-  tabText: {
+  switchBtnActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  switchText: {
     fontSize: 13,
+    fontWeight: '600',
   },
   pinSection: {
     alignItems: 'center',
   },
   pinInstruction: {
     fontSize: 13,
-    textAlign: 'center',
     marginBottom: 16,
+    textAlign: 'center',
   },
-  dotsRow: {
+  pinDotsRow: {
     flexDirection: 'row',
     gap: 16,
     marginBottom: 16,
-    justifyContent: 'center',
   },
-  dot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
+  pinDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
   },
-  errorText: {
+  pinErrorText: {
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 12,
     textAlign: 'center',
   },
-  keypadGrid: {
-    width: '100%',
-    maxWidth: 280,
-    gap: 10,
-  },
-  keypadRow: {
+  keypad: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    width: 260,
     justifyContent: 'space-between',
+    gap: 14,
   },
-  keypadKey: {
-    width: 72,
-    height: 52,
-    borderRadius: 14,
+  keyBtn: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  keypadKeyEmpty: {
-    width: 72,
-    height: 52,
+  keyEmpty: {
+    width: 70,
+    height: 70,
   },
-  keyNumber: {
-    fontSize: 20,
+  keyText: {
+    fontSize: 24,
     fontWeight: '700',
   },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  form: {
+    gap: 14,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
+  eyeIcon: {
+    position: 'absolute',
+    right: 14,
+    top: 38,
   },
-  dividerText: {
-    paddingHorizontal: 12,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  footerRow: {
+  footer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 24,
   },
   footerText: {
-    fontSize: 14,
+    fontSize: 13,
   },
   signupLink: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+  },
+  demoBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  demoText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

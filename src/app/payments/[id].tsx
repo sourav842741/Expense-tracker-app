@@ -5,11 +5,12 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Platform,
   Modal,
   Image,
+  Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
@@ -22,6 +23,8 @@ import {
   Share2,
   Camera,
   Maximize2,
+  Pencil,
+  Trash2,
 } from 'lucide-react-native';
 
 import { useTheme } from '@/hooks/use-theme';
@@ -34,7 +37,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ReceiptUploadModal } from '@/components/payments/ReceiptUploadModal';
 import { formatINR } from '@/utils/currency';
 import { formatDateFull, formatDateShort, getDueStatusInfo } from '@/utils/dates';
-import { PaymentMethod } from '@/types/payment';
+import { PaymentMethod, PaymentCategory } from '@/types/payment';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar as RNStatusBar } from 'react-native';
 
@@ -47,6 +50,8 @@ export default function PaymentDetailScreen() {
 
   const paymentPlans = useAppStore((state) => state.paymentPlans);
   const markCyclePaid = useAppStore((state) => state.markCyclePaid);
+  const updatePaymentPlan = useAppStore((state) => state.updatePaymentPlan);
+  const deletePaymentPlan = useAppStore((state) => state.deletePaymentPlan);
 
   const plan = paymentPlans.find((p) => p.id === id) || paymentPlans[0];
 
@@ -59,6 +64,13 @@ export default function PaymentDetailScreen() {
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [attachedProofUrl, setAttachedProofUrl] = useState<string>('');
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+
+  // Edit Plan Modal State
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editTitle, setEditTitle] = useState(plan ? plan.title : '');
+  const [editAmount, setEditAmount] = useState(plan ? String(plan.amount) : '');
+  const [editDueDay, setEditDueDay] = useState(plan ? String(plan.dueDay) : '10');
+  const [editCategory, setEditCategory] = useState<PaymentCategory>(plan ? plan.category : 'emi');
 
   if (!plan) {
     return (
@@ -102,6 +114,45 @@ export default function PaymentDetailScreen() {
     setAttachedProofUrl('');
   };
 
+  const handleSaveEdit = () => {
+    if (!editTitle.trim()) {
+      Alert.alert('Validation Error', 'Please enter a valid title.');
+      return;
+    }
+    const amt = parseFloat(editAmount);
+    if (isNaN(amt) || amt <= 0) {
+      Alert.alert('Validation Error', 'Please enter a valid payment amount.');
+      return;
+    }
+    const day = parseInt(editDueDay, 10) || plan.dueDay;
+
+    updatePaymentPlan(plan.id, {
+      title: editTitle.trim(),
+      amount: amt,
+      dueDay: day,
+      category: editCategory,
+    });
+    setEditModalVisible(false);
+  };
+
+  const handleDeletePlan = () => {
+    Alert.alert(
+      'Delete Payment Plan',
+      `Are you sure you want to delete "${plan.title}"? This will also remove its payment history.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deletePaymentPlan(plan.id);
+            router.back();
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       {/* Custom Nav Bar */}
@@ -113,7 +164,28 @@ export default function PaymentDetailScreen() {
           <ArrowLeft size={18} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.navTitle, { color: colors.textPrimary }]}>Payment Details</Text>
-        <View style={{ width: 38 }} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              setEditTitle(plan.title);
+              setEditAmount(String(plan.amount));
+              setEditDueDay(String(plan.dueDay));
+              setEditCategory(plan.category);
+              setEditModalVisible(true);
+            }}
+            style={[styles.navBtn, { backgroundColor: colors.surfaceSecondary }]}
+            accessibilityLabel="Edit Plan"
+          >
+            <Pencil size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleDeletePlan}
+            style={[styles.navBtn, { backgroundColor: colors.danger + '15' }]}
+            accessibilityLabel="Delete Plan"
+          >
+            <Trash2 size={16} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -444,6 +516,71 @@ export default function PaymentDetailScreen() {
               variant="primary"
               size="md"
               style={{ marginTop: 8 }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Plan Modal */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalBox,
+              {
+                backgroundColor: colors.card,
+                borderRadius: radius.card,
+                borderColor: colors.border,
+                borderWidth: 1,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                Edit Payment Plan
+              </Text>
+              <TouchableOpacity
+                onPress={() => setEditModalVisible(false)}
+                style={[styles.closeBtn, { backgroundColor: colors.surfaceSecondary }]}
+              >
+                <X size={16} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <Input
+              label="Plan Title"
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="e.g. Bike EMI, Rent"
+            />
+
+            <Input
+              label="Amount (₹)"
+              value={editAmount}
+              onChangeText={setEditAmount}
+              keyboardType="numeric"
+              placeholder="e.g. 5000"
+            />
+
+            <Input
+              label="Due Day of Month (1-31)"
+              value={editDueDay}
+              onChangeText={setEditDueDay}
+              keyboardType="numeric"
+              placeholder="e.g. 10"
+            />
+
+            <Button
+              title="Save Changes"
+              onPress={handleSaveEdit}
+              variant="primary"
+              size="md"
+              style={{ marginTop: 12 }}
             />
           </View>
         </View>
